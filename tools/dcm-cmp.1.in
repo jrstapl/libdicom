@@ -1,0 +1,42 @@
+.TH DCM-CMP 1 2026-06-12 "libdicom @DCM_SUFFIXED_VERSION@" "User Commands"
+
+.SH NAME
+dcm-cmp \- print metadata content of two provided DICOM PS3.10 files to standard output with ascii highlighting to show differences
+
+.SH SYNOPSIS
+.BR "dcm-dcmp " [ -hViwcl "]
+.IR file
+
+.SH DESCRIPTION
+Print metadata content of DICOM PS3.10 file to standard output.
+
+.SH OPTIONS
+
+.TP
+.B -h
+Display help message (usage summary) and exit.
+
+.TP
+.B -V
+Display version and exit.
+
+.TP
+.B -i
+Show info messages.
+
+.TP
+.B -w
+Show warning messages.
+
+.TP
+.B -c
+Do not display colored output.
+
+.TP
+.B -l
+Display full image metadata rather than subset.
+
+.SH EXIT STATUS
+.B dcm-dump
+returns 0 on success, 1 if a file could not be read or 2 if the
+arguments are invalid.
