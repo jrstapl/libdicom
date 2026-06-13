@@ -12,9 +12,9 @@ static const char usage[] = "usage: dcm-cmp [-hVcl] FILE_PATH1 FILE_PATH2 ...";
 int get_winsize(struct winsize *ws) { return ioctl(0, TIOCGWINSZ, ws); }
 
 int read_dicom_and_error(const char *fname, DcmError **error,
-                         DcmFilehandle *fhandle) {
+                         DcmFilehandle **fhandle) {
   dcm_log_info("Read file '%s'", fname);
-  fhandle = dcm_filehandle_create_from_file(error, fname);
+  *fhandle = dcm_filehandle_create_from_file(error, fname);
   if (fhandle == NULL) {
     dcm_error_print(*error);
     dcm_error_clear(error);
@@ -57,12 +57,13 @@ bool print_metadata_element(const DcmElement *element, void *client) {
     return false;
   }
   const char *keyword = dcm_dict_keyword_from_tag(curr_tag);
-  printf("%s\n", keyword);
 
   if (strcmp(val1, val2) != 0) {
+    printf("%s\n", keyword);
     printf("%s %s\n", val1, val2);
   } else {
-    printf("\033[43m%s %s\033[m", val1, val2);
+    printf("\033[43m%s\033[m\n", keyword);
+    printf("\033[43m%s %s\033[m\n", val1, val2);
   }
 
   return true;
@@ -122,19 +123,37 @@ int main(int argc, char *argv[]) {
   DcmFilehandle *filehandle_1 = NULL;
   DcmError *error_file2 = NULL;
   DcmFilehandle *filehandle_2 = NULL;
-  if (read_dicom_and_error(argv[1], &error_file1, filehandle_1) != 0 ||
-      read_dicom_and_error(argv[2], &error_file2, filehandle_2) != 0) {
+  if (read_dicom_and_error(argv[dcm_optind], &error_file1, &filehandle_1) !=
+          0 ||
+      read_dicom_and_error(argv[dcm_optind + 1], &error_file2, &filehandle_2) !=
+          0) {
+    dcm_error_get_message(error_file1);
+    dcm_error_get_summary(error_file1);
+    dcm_error_get_message(error_file2);
+    dcm_error_get_summary(error_file2);
+    dcm_error_log(error_file1);
+    dcm_error_clear(&error_file1);
+    dcm_error_log(error_file2);
+    dcm_error_clear(&error_file2);
     return EXIT_FAILURE;
   }
-  const DcmDataSet *metadata_1 = NULL;
-  const DcmDataSet *metadata_2 = NULL;
-  if (get_metadata_from_filehandle(&error_file1, filehandle_1, metadata_1) !=
-          0 ||
-      get_metadata_from_filehandle(&error_file2, filehandle_2, metadata_2) !=
-          0) {
+  const DcmDataSet *metadata_1 =
+      dcm_filehandle_read_metadata(&error_file1, filehandle_1, NULL);
+  const DcmDataSet *metadata_2 =
+      dcm_filehandle_read_metadata(&error_file2, filehandle_2, NULL);
+  if (metadata_1 == NULL || metadata_2 == NULL) {
+    dcm_error_get_message(error_file1);
+    dcm_error_get_summary(error_file1);
+    dcm_error_get_message(error_file2);
+    dcm_error_get_summary(error_file2);
+    dcm_error_log(error_file1);
+    dcm_error_clear(&error_file1);
+    dcm_error_log(error_file2);
+    dcm_error_clear(&error_file2);
     cleanup_fhandles(filehandle_1, filehandle_2);
     return EXIT_FAILURE;
   }
+  printf("foreach\n");
 
   bool d1 = dcm_dataset_foreach(metadata_1, *print_metadata_element,
                                 (void *)metadata_2);
