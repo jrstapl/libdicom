@@ -9,6 +9,11 @@
 
 static const char usage[] = "usage: dcm-cmp [-hVcl] FILE_PATH1 FILE_PATH2 ...";
 
+typedef struct print_args {
+  const DcmDataSet *ds;
+  int window_width;
+} print_args_t;
+
 int get_winsize(struct winsize *ws) { return ioctl(0, TIOCGWINSZ, ws); }
 
 int read_dicom_and_error(const char *fname, DcmError **error,
@@ -42,7 +47,7 @@ int get_metadata_from_filehandle(DcmError **error, DcmFilehandle *fhandle,
 
 bool print_metadata_element(const DcmElement *element, void *client) {
   DcmError *e1, *e2;
-  const DcmDataSet *metadata_2 = (const DcmDataSet *)client;
+  print_args_t *p_args = (print_args_t *)client;
   int curr_tag = dcm_element_get_tag(element);
   const char *val1, *val2;
   if (!dcm_element_get_value_string(&e1, element, 0, &val1)) {
@@ -50,7 +55,7 @@ bool print_metadata_element(const DcmElement *element, void *client) {
     dcm_error_clear(&e1);
     return false;
   }
-  DcmElement *elem_2 = dcm_dataset_get(&e2, metadata_2, curr_tag);
+  DcmElement *elem_2 = dcm_dataset_get(&e2, p_args->ds, curr_tag);
   if (elem_2 == NULL || !dcm_element_get_value_string(&e2, elem_2, 0, &val2)) {
     dcm_error_log(e2);
     dcm_error_clear(&e2);
@@ -58,13 +63,15 @@ bool print_metadata_element(const DcmElement *element, void *client) {
   }
   const char *keyword = dcm_dict_keyword_from_tag(curr_tag);
 
-  if (strcmp(val1, val2) != 0) {
-    printf("%s\n", keyword);
-    printf("%s %s\n", val1, val2);
+  if (strcmp(val1, val2) == 0) {
+    printf("| %-*s|%-*s|\n", p_args->window_width, keyword,
+           p_args->window_width, " ");
   } else {
-    printf("\033[43m%s\033[m\n", keyword);
-    printf("\033[43m%s %s\033[m\n", val1, val2);
+    printf("| \033[43;30m%-*s\033[m|%-*s|\n", p_args->window_width, keyword,
+           p_args->window_width, " ");
   }
+  printf("| %-*s| %-*s|\n", p_args->window_width, val1,
+         p_args->window_width - 1, val2);
 
   return true;
 }
@@ -85,7 +92,8 @@ int main(int argc, char *argv[]) {
     printf("Unable to create winsize\n");
     return EXIT_FAILURE;
   }
-  int cols_per_section = ws.ws_col / 2; // truncation okay
+  int cols_per_section =
+      ws.ws_col / 2 - 3; // truncation okay, allow for " | " in the print string
 
   int c;
   while ((c = dcm_getopt(argc, argv, "h?Vviw")) != -1) {
@@ -153,10 +161,22 @@ int main(int argc, char *argv[]) {
     cleanup_fhandles(filehandle_1, filehandle_2);
     return EXIT_FAILURE;
   }
-  printf("foreach\n");
 
-  bool d1 = dcm_dataset_foreach(metadata_1, *print_metadata_element,
-                                (void *)metadata_2);
+  print_args_t p_args = {
+      .ds = metadata_2,
+      .window_width = cols_per_section,
+  };
+
+  printf("| %*s%*s%*s%*s\n", cols_per_section / 2, "Image 1",
+         cols_per_section / 2 + 2, "|", cols_per_section / 2, "Image 2",
+         cols_per_section / 2 + 2, "|");
+
+  for (int i = 0; i < cols_per_section * 2 + 3; i++) {
+    printf("-");
+  }
+  printf("\n");
+  bool d1 =
+      dcm_dataset_foreach(metadata_1, *print_metadata_element, (void *)&p_args);
 
   cleanup_fhandles(filehandle_1, filehandle_2);
   return EXIT_SUCCESS;
