@@ -12,6 +12,7 @@ static const char usage[] = "usage: dcm-cmp [-hVcl] FILE_PATH1 FILE_PATH2 ...";
 typedef struct print_args {
   const DcmDataSet *ds;
   int window_width;
+  bool print_full_color;
 } print_args_t;
 
 int get_winsize(struct winsize *ws) { return ioctl(0, TIOCGWINSZ, ws); }
@@ -63,7 +64,7 @@ bool print_metadata_element(const DcmElement *element, void *client) {
   }
   const char *keyword = dcm_dict_keyword_from_tag(curr_tag);
 
-  if (strcmp(val1, val2) == 0) {
+  if (strcmp(val1, val2) == 0 || !p_args->print_full_color) {
     printf("| %-*s|%-*s|\n", p_args->window_width, keyword,
            p_args->window_width, " ");
   } else {
@@ -96,7 +97,7 @@ int main(int argc, char *argv[]) {
       ws.ws_col / 2 - 3; // truncation okay, allow for " | " in the print string
 
   int c;
-  while ((c = dcm_getopt(argc, argv, "h?Vviw")) != -1) {
+  while ((c = dcm_getopt(argc, argv, "h?Vviwcl")) != -1) {
     switch (c) {
     case 'h':
     case '?':
@@ -145,10 +146,15 @@ int main(int argc, char *argv[]) {
     dcm_error_clear(&error_file2);
     return EXIT_FAILURE;
   }
-  const DcmDataSet *metadata_1 =
-      dcm_filehandle_read_metadata(&error_file1, filehandle_1, NULL);
-  const DcmDataSet *metadata_2 =
-      dcm_filehandle_read_metadata(&error_file2, filehandle_2, NULL);
+  const DcmDataSet *metadata_1;
+  const DcmDataSet *metadata_2;
+  if (print_full_meta) {
+    metadata_1 = dcm_filehandle_read_metadata(&error_file1, filehandle_1, NULL);
+    metadata_2 = dcm_filehandle_read_metadata(&error_file2, filehandle_2, NULL);
+  } else {
+    metadata_1 = dcm_filehandle_get_metadata_subset(&error_file1, filehandle_1);
+    metadata_2 = dcm_filehandle_get_metadata_subset(&error_file2, filehandle_2);
+  }
   if (metadata_1 == NULL || metadata_2 == NULL) {
     dcm_error_get_message(error_file1);
     dcm_error_get_summary(error_file1);
@@ -165,11 +171,12 @@ int main(int argc, char *argv[]) {
   print_args_t p_args = {
       .ds = metadata_2,
       .window_width = cols_per_section,
+      .print_full_color = print_color,
   };
 
   printf("| %*s%*s%*s%*s\n", cols_per_section / 2, "Image 1",
-         cols_per_section / 2 + 2, "|", cols_per_section / 2, "Image 2",
-         cols_per_section / 2 + 2, "|");
+         cols_per_section / 2 + 1, "|", cols_per_section / 2, "Image 2",
+         cols_per_section / 2 + 1, "|");
 
   for (int i = 0; i < cols_per_section * 2 + 3; i++) {
     printf("-");
