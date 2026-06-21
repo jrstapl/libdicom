@@ -3,7 +3,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/ioctl.h>
 
 #include <dicom/dicom.h>
 
@@ -15,7 +14,36 @@ typedef struct print_args {
   bool print_full_color;
 } print_args_t;
 
-int get_winsize(struct winsize *ws) { return ioctl(0, TIOCGWINSZ, ws); }
+#ifdef __linux__
+#include <sys/ioctl.h>
+
+int get_cols_in_window() {
+  struct winsize ws;
+
+  ioctl(0, TIOCGWINSZ, &ws);
+  return ws.ws_col;
+}
+
+#elif _WIN32
+#include <wincon.h>
+// https://github.com/sindresorhus/windows-terminal-size/blob/main/term-size.c
+int get_cols_in_window() {
+  CONSOLE_SCREEN_BUFFER_INFO info;
+
+  HANDLE tmpConsole = CreateConsoleScreenBuffer(GENERIC_READ, 0, NULL,
+                                                CONSOLE_TEXTMODE_BUFFER, NULL);
+
+  // can't use `GetStdHandle(STD_OUTPUT_HANDLE)` as it doesn't work when output
+  // is redirected
+  GetConsoleScreenBufferInfo(tmpConsole, &info);
+
+  CloseHandle(tmpConsole);
+
+  return info.dwMaximumWindowSize.X;
+}
+#else
+#error "OS not supported"
+#endif
 
 int read_dicom_and_error(const char *fname, DcmError **error,
                          DcmFilehandle **fhandle) {
@@ -65,14 +93,14 @@ bool print_metadata_element(const DcmElement *element, void *client) {
   const char *keyword = dcm_dict_keyword_from_tag(curr_tag);
 
   if (strcmp(val1, val2) == 0 || !p_args->print_full_color) {
-    printf("| %-*s|%-*s|\n", p_args->window_width, keyword,
-           p_args->window_width, " ");
+    printf("| %-*s|%-*s|\n", p_args->window_width - 1, keyword,
+           p_args->window_width - 2, " ");
   } else {
-    printf("| \033[43;30m%-*s\033[m|%-*s|\n", p_args->window_width, keyword,
-           p_args->window_width, " ");
+    printf("| \033[43;30m%-*s\033[m|%-*s|\n", p_args->window_width - 1, keyword,
+           p_args->window_width - 2, " ");
   }
-  printf("| %-*s| %-*s|\n", p_args->window_width, val1,
-         p_args->window_width - 1, val2);
+  printf("| %-*s| %-*s|\n", p_args->window_width - 1, val1,
+         p_args->window_width - 3, val2);
 
   return true;
 }
@@ -88,13 +116,7 @@ int main(int argc, char *argv[]) {
     printf("%s\n", usage);
   }
 
-  struct winsize ws;
-  if (get_winsize(&ws) < 0) {
-    printf("Unable to create winsize\n");
-    return EXIT_FAILURE;
-  }
-  int cols_per_section =
-      ws.ws_col / 2 - 3; // truncation okay, allow for " | " in the print string
+  int cols_per_section = get_cols_in_window() / 2;
 
   int c;
   while ((c = dcm_getopt(argc, argv, "h?Vviwcl")) != -1) {
@@ -176,9 +198,9 @@ int main(int argc, char *argv[]) {
 
   printf("| %*s%*s%*s%*s\n", cols_per_section / 2, "Image 1",
          cols_per_section / 2 + 1, "|", cols_per_section / 2, "Image 2",
-         cols_per_section / 2 + 1, "|");
+         cols_per_section / 2, "|");
 
-  for (int i = 0; i < cols_per_section * 2 + 3; i++) {
+  for (int i = 0; i < cols_per_section * 2; i++) {
     printf("-");
   }
   printf("\n");
